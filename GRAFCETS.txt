@@ -1,0 +1,135 @@
+         +=======+
+         |  C0   |  Initial Step: System Stopped
+         +=======+  Actions: - STOP (LIGHT) [%Q1.3]
+             |               - STOPPED LIGHT [%Q0.2]
+       ------|------ Transition: (START [%I0.0] AND AUTO [%I0.3]) OR STARTAUTO [%M10.3]
+             |
+             v
+         +-------+
+         |  C1   |  Step 1: System Running / Auto Mode
+         +-------+  Actions: - START (LIGHT) [%Q1.2]
+             |               - ACTIVE LIGHT [%Q0.0]
+       ------|------ Transition: STOP [%I0.1]
+             |
+             v
+         +-------+
+         |  C3   |  Step 3: Stop Sequence Active
+         +-------+
+             |
+       ------|------ Transition: End-of-Cycle Met
+             |
+             +-----------------------( Loop back to Initial Step C0 )
+
+
+                  +=======+
+                  |   0   |  Initial Step: Waiting for Part
+                  +=======+  Actions: - CONV EMITTER [%Q2.0]
+                      |               - EMITTER [%Q0.3]
+                ------|------ Transition: Part Detected on Table
+                      |
+         =========================== Alternative Divergence (OR)
+         |            |            |
+         |            |            | [METAL SENSOR]
+         |            |            v
+         |            |        +-------+
+         |            |        |  2.1  | Metal Track
+         |            |        +-------+ Action: Move Axis
+         |            |            |
+         |            |      ------|------ Trans: Metal Limit
+         |            |            |
+         |            |            v
+         |            |        +-------+
+         |            |        |   4   | Discharge Metal
+         |            |        +-------+ Action: Reset Position
+         |            |            |
+         |            |      ------|------ Trans: Metal Run Clear
+         |            |            |
+         | [BLUE]     | [GREEN]    |
+         v            v            |
+     +-------+    +-------+        |
+     |   1   |    |   2   |        | Blue/Green Sorting Tracks
+     +-------+    +-------+        | Actions: - TURN TABLE+ [%Q1.4] (Blue)
+         |            |            |          - TURN TABLE- [%Q1.5] (Green)
+   ------|------ ------|------     | Transitions: Limits Reached
+         |            |            |
+         v            v            |
+     +-------+    +-------+        |
+     |   3   |    |  3.1  |        | Discharge Paths
+     +-------+    +-------+        | Actions: - TURN TABLE 90° [%Q1.6]
+         |            |            |          - CONV M 1 / G 1
+   ------|------ ------|------     | Transitions: Timers Done (Part Clear)
+         |            |            |
+         |            |            |
+         =========================== Alternative Convergence
+                      |
+                      +---------------------( Loop back to Initial Step 0 )
+
+
+                                   +=======+
+                                   | 0 RB  |  Initial Step: Robot Arm Idle
+                                   +=======+  
+                                       |
+         ===================================================================== Simultaneous Divergence (AND)
+                |                          |                          |
+                | [Path A: Entry Feed]     | [Path B: Pick & Place]   | [Path C: Outfeed Run]
+                v                          v                          v
+            +-------+                  +-------+                  +-------+
+            | 1 RB  |                  |1 RB 2 |                  |1 RB 3 |
+            +-------+                  +-------+                  +-------+
+    Actions: - S->CONV B 2 [%Q2.3]     | Actions: Awaits sensor   | Actions: - X=9.0, Y=0.8
+                |                          |                          |      - Start TIMER1RB3
+          ------|------              ------|------              ------|------
+          Trans: ROBOT B D SENSOR2   Trans: NEGATIVE RISE       Trans: TIMER1RB3.Q
+                |                          |                          |
+                v                          v                          v
+            +-------+                  +-------+                  +-------+
+            | 2 RB  |                  |2 RB 2 |                  |2 RB 3 |
+            +-------+                  +-------+                  +-------+
+    Actions: - S->STOPPER B 1  Actions: - X=0.9, Y=9.0, Z=5.6     | Actions: - Z=8.3
+             - R->CONV B 2              - S->P&P GRAB [%Q3.6]     |          - Start TIMER2RB3
+                |                          |                          |
+          ------|------              ------|------              ------|------
+          Trans: Gate Secured        Trans: P&P DETECTED        Trans: TIMER2RB3.Q
+                |                          |                          |
+                |                          v                          v
+                |                      +-------+                  +-------+
+                |                      |3 RB 2 |                  |3 RB 3 |
+                |                      +-------+                  +-------+
+                |              Actions: - X=9.1, Y=9.0    Actions: - X=0.8, Y=1.2, Z=3.1
+                |                       - Z=8.1, Timer5           - Start TIMER3RB3
+                |                          |                          |
+                |                    ------|------              ------|------
+                |                    Trans: ROBOT D SENSOR3     Trans: TIMER3RB3.Q
+                |                          |                          |
+                |                          v                          v
+                |                      +-------+                  +-------+
+                |                      |4 RB 2 |                  |4 RB 3 |
+                |                      +-------+                  +-------+
+                |              Actions: - X,Y,Z = 0.0     Actions: - Z=4.5 -> 0.0
+                |                       - S->PUSHER B             - Start TIMER4RB3
+                |                       - S->STOPPER B 2              |
+                |                          |                    ------|------
+                |                    ------|------              Trans: P&P DETECTED
+                |                    Trans: ROBOT D SENSOR4           |
+                |                          |                          v
+                |                          v                      +-------+
+                |                      +-------+                  |5 RB 3 |
+                |                      |5 RB 2 |                  +-------+
+                |                      +-------+          Actions: - R->STOPPER B 1 & 2
+                |              Actions: Reset task run            - S->CONV B 3 [%Q2.4]
+                |                          |                          |
+                |                    ------|------              ------|------
+                |                    Trans: Path B Clear        Trans: ROBOT D SENSOR2 (Falling)
+                |                          |                          |
+                |                          |                          v
+                |                          |                      +-------+
+                |                          |                      |6 RB 3 |
+                |                          |                      +-------+
+                |                          |              Actions: Cascade S->CONV B 4 to 8
+                |                          |                          |
+                |                          |                    ------|------
+                |                          |                    Trans: Outfeed Clear
+                |                          |                          |
+         ===================================================================== Simultaneous Convergence
+                                       |
+                                       +---------------------( Loop back to Initial Step 0 RB )
